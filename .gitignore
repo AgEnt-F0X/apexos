@@ -10,3 +10,9 @@ gui-test-screenshots/
 # hero packs are large binary artifacts — regenerate with scripts/snapshot-session.ts
 # (comment the next line out if you want to commit a pre-warmed pack for deploy)
 public/packs/*.apx
+# …except the demo pack: the always-open door. It ships with the repo so the
+# theatre works on a fresh clone, offline, and during OpenF1 live-session locks
+!public/packs/9595.apx
+
+# taste-skill inspector working files
+.taste-skill/

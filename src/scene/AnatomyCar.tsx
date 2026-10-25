@@ -26,7 +26,7 @@
      · sceneRefs.anatomySample / .anatomyReadout — published for the HUD
    ============================================================ */
 
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { SessionData } from '../data/types'
@@ -153,6 +153,42 @@ export function AnatomyCar({ model, session }: { model: TrackModel; session: Ses
 
   const geo = useMemo(() => getAnatomyCarGeometry(), [])
 
+  // the inspection bay: a porcelain stage disc under the cutaway. Without
+  // it the white car floats in the white void and its silhouette dissolves;
+  // a tone step plus the key light's real contact shadow seats it —
+  // elevation by shadow, never by glow
+  const stage = useMemo(() => {
+    const c = document.createElement('canvas')
+    c.width = c.height = 256
+    const ctx = c.getContext('2d')!
+    const g = ctx.createRadialGradient(128, 128, 8, 128, 128, 126)
+    g.addColorStop(0, 'rgba(214, 221, 230, 0.92)') // contact tone under the car
+    g.addColorStop(0.45, 'rgba(232, 237, 243, 0.55)')
+    g.addColorStop(1, 'rgba(242, 245, 248, 0)')
+    ctx.fillStyle = g
+    ctx.fillRect(0, 0, 256, 256)
+    const tex = new THREE.CanvasTexture(c)
+    tex.colorSpace = THREE.SRGBColorSpace
+    const geo = new THREE.CircleGeometry(10, 64)
+    geo.rotateX(-Math.PI / 2)
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.96,
+      metalness: 0,
+    })
+    return { geo, mat }
+  }, [])
+
+  useEffect(
+    () => () => {
+      stage.geo.dispose()
+      stage.mat.dispose()
+    },
+    [stage],
+  )
+
   useFrame(() => {
     const { focusDriver, raceIndex } = useAppStore.getState()
     const d = focusDriver ?? raceIndex?.leaderAt(raceClock.t) ?? null
@@ -264,6 +300,7 @@ export function AnatomyCar({ model, session }: { model: TrackModel; session: Ses
 
   return (
     <group ref={group}>
+      <mesh geometry={stage.geo} material={stage.mat} position={[0, 0.02, 0]} receiveShadow />
       <mesh ref={mesh} geometry={geo} material={material} />
     </group>
   )

@@ -37,11 +37,19 @@ interface Shot {
   other: number | null
   /** world meters to fit across the smaller viewport dimension */
   span: number
+  /** shot expires at this RACE time — at 20× lensing a wall-clock hold
+      keeps cutting back to action that is long over */
   until: number
   cut: boolean
+  /** the moment this shot serves (if any): when it passes, the shot passes */
+  momentEnd?: number
 }
 
+/** shot lengths in RACE seconds, compensated by the playback rate at pick
+    time so temporal lensing can't outrun the director */
 const SHOT_LENGTH: Record<ShotType, number> = { plate: 11, follow: 8, pair: 7.5 }
+/** a hard cut never follows the previous one by less than this (wall s) */
+const MIN_CUT_GAP_S = 2.5
 
 export function CameraRig({ model, session }: { model: TrackModel; session: SessionData }) {
   const cameraMode = useAppStore((s) => s.cameraMode)
@@ -163,6 +171,7 @@ export function CameraRig({ model, session }: { model: TrackModel; session: Sess
   const shotRef = useRef<Shot | null>(null)
   const shotCounter = useRef(0)
   const wallT = useRef(0)
+  const lastCutWallT = useRef(-1e9)
   const lastMode = useRef<string>('')
   /** anatomy mode: slow auto-revolve phase + the last time the user touched it */
   const revolve = useRef(0)
@@ -193,10 +202,14 @@ export function CameraRig({ model, session }: { model: TrackModel; session: Sess
     if (!raceIndex) return null
     const t = raceClock.t
     shotCounter.current++
+    // lensing runs the race 1–24×; a shot must live its scripted length of
+    // RACE time or the director narrates the past
+    const rate = Math.max(1, raceClock.rate)
+    const hold = (len: number) => t + len * rate
 
     // 0. the establishing shot: always open on the whole diorama
     if (shotCounter.current === 1) {
-      return { type: 'plate', driver: null, other: null, span: fullSpan, until: wallT.current + SHOT_LENGTH.plate, cut: false }
+      return { type: 'plate', driver: null, other: null, span: fullSpan, until: hold(SHOT_LENGTH.plate), cut: false }
     }
 
     // 1. a fresh high-severity moment cuts in tight
@@ -211,22 +224,22 @@ export function CameraRig({ model, session }: { model: TrackModel; session: Sess
       if (best) {
         const m = best.m
         if (m.type === 'battle' && m.drivers.length > 1) {
-          return { type: 'pair', driver: m.drivers[0], other: m.drivers[1], span: 220, until: wallT.current + SHOT_LENGTH.pair, cut: true }
+          return { type: 'pair', driver: m.drivers[0], other: m.drivers[1], span: 150, until: hold(SHOT_LENGTH.pair), cut: true, momentEnd: m.tEnd }
         }
-        const span = m.type === 'overtake' ? 120 : 170
-        return { type: 'follow', driver: m.drivers[0], other: null, span, until: wallT.current + SHOT_LENGTH.follow, cut: true }
+        const span = m.type === 'overtake' ? 78 : 108
+        return { type: 'follow', driver: m.drivers[0], other: null, span, until: hold(SHOT_LENGTH.follow), cut: true, momentEnd: m.tEnd }
       }
     }
 
     // 2. the user's focus is sacred
     if (focusDriver !== null) {
-      return { type: 'follow', driver: focusDriver, other: null, span: 150, until: wallT.current + SHOT_LENGTH.follow, cut: false }
+      return { type: 'follow', driver: focusDriver, other: null, span: 85, until: hold(SHOT_LENGTH.follow), cut: false }
     }
 
     // 3. idle grammar: mostly watch the sharp end; every third shot, turn the model
     if (shotCounter.current % 3 === 0) {
       plateIdx.current = (plateIdx.current + 1) % PLATES.length
-      return { type: 'plate', driver: null, other: null, span: fullSpan, until: wallT.current + SHOT_LENGTH.plate, cut: false }
+      return { type: 'plate', driver: null, other: null, span: fullSpan, until: hold(SHOT_LENGTH.plate), cut: false }
     }
     const t2 = raceClock.t
     const order = raceIndex.orderAt(t2)
@@ -238,11 +251,11 @@ export function CameraRig({ model, session }: { model: TrackModel; session: Sess
       }
     }
     if (tightest) {
-      return { type: 'pair', driver: tightest.d, other: tightest.ahead, span: 220, until: wallT.current + SHOT_LENGTH.pair, cut: true }
+      return { type: 'pair', driver: tightest.d, other: tightest.ahead, span: 150, until: hold(SHOT_LENGTH.pair), cut: true }
     }
     const leader = order[0]
     if (leader === undefined) return null
-    return { type: 'follow', driver: leader, other: null, span: 160, until: wallT.current + SHOT_LENGTH.follow, cut: true }
+    return { type: 'follow', driver: leader, other: null, span: 92, until: hold(SHOT_LENGTH.follow), cut: true }
   }
 
   useFrame((_, dt) => {
@@ -270,50 +283,59 @@ export function CameraRig({ model, session }: { model: TrackModel; session: Sess
       let shot = shotRef.current
       const stale =
         !shot ||
-        wallT.current >= shot.until ||
+        raceClock.t >= shot.until ||
+        (shot.momentEnd !== undefined && raceClock.t > shot.momentEnd + 3) ||
         (shot.driver !== null && !session.channels[shot.driver])
       if (stale) {
         shot = pickShot()
+        // pace hard cuts: at high lensing rates moments fire faster than
+        // the eye can re-orient — hold the minimum gap between them
+        if (shot && shot.cut && wallT.current - lastCutWallT.current < MIN_CUT_GAP_S) {
+          shot = null
+        } else if (shot?.cut) {
+          lastCutWallT.current = wallT.current
+        }
         shotRef.current = shot
       }
-      if (!shot) return
-      cut = shot.cut
-      shot.cut = false
+      if (shot) {
+        cut = shot.cut
+        shot.cut = false
 
-      if (shot.type === 'plate') {
-        azGoal.current = PLATES[plateIdx.current]
-        spanGoal.current = fitSpan(azGoal.current, size.width, size.height)
-        targetGoal.current.copy(center)
-      } else if (shot.type === 'pair' && shot.driver !== null && shot.other !== null) {
-        const okA = carPos(shot.driver, tmpA)
-        const chB = session.channels[shot.other]
-        let okB = false
-        if (chB) {
-          sampleCar(chB, raceClock.t, sampleB)
-          okB = sampleB.valid
-          if (okB) tmpB.set(sampleB.x, sampleB.z - model.elevationBase, -sampleB.y)
+        if (shot.type === 'plate') {
+          azGoal.current = PLATES[plateIdx.current]
+          spanGoal.current = fitSpan(azGoal.current, size.width, size.height)
+          targetGoal.current.copy(center)
+        } else if (shot.type === 'pair' && shot.driver !== null && shot.other !== null) {
+          const okA = carPos(shot.driver, tmpA)
+          const chB = session.channels[shot.other]
+          let okB = false
+          if (chB) {
+            sampleCar(chB, raceClock.t, sampleB)
+            okB = sampleB.valid
+            if (okB) tmpB.set(sampleB.x, sampleB.z - model.elevationBase, -sampleB.y)
+          }
+          if (okA && okB) {
+            targetGoal.current.addVectors(tmpA, tmpB).multiplyScalar(0.5)
+            spanGoal.current = THREE.MathUtils.clamp(tmpA.distanceTo(tmpB) * 2.6, 95, 380)
+          } else if (okA || okB) {
+            targetGoal.current.copy(okA ? tmpA : tmpB)
+            spanGoal.current = 92
+          } else {
+            // subject telemetry gone (pit box / dropout): re-pick next frame,
+            // but never skip the settle — a skipped frame freezes the rig
+            shotRef.current = null
+          }
+        } else if (shot.driver !== null) {
+          if (carPos(shot.driver, tmpA)) {
+            // lead room: bias the frame ahead of the car, where the race is going
+            targetGoal.current.copy(tmpA)
+            targetGoal.current.x += Math.cos(sample.heading) * shot.span * 0.11
+            targetGoal.current.z += -Math.sin(sample.heading) * shot.span * 0.11
+            spanGoal.current = shot.span
+          } else {
+            shotRef.current = null
+          }
         }
-        if (!okA && !okB) {
-          shotRef.current = null
-          return
-        }
-        if (okA && okB) {
-          targetGoal.current.addVectors(tmpA, tmpB).multiplyScalar(0.5)
-          spanGoal.current = THREE.MathUtils.clamp(tmpA.distanceTo(tmpB) * 3.0, 150, 460)
-        } else {
-          targetGoal.current.copy(okA ? tmpA : tmpB)
-          spanGoal.current = shot.span
-        }
-      } else if (shot.driver !== null) {
-        if (!carPos(shot.driver, tmpA)) {
-          shotRef.current = null
-          return
-        }
-        // lead room: bias the frame ahead of the car, where the race is going
-        targetGoal.current.copy(tmpA)
-        targetGoal.current.x += Math.cos(sample.heading) * shot.span * 0.11
-        targetGoal.current.z += -Math.sin(sample.heading) * shot.span * 0.11
-        spanGoal.current = shot.span
       }
     } else if (cameraMode === 'chase') {
       const { focusDriver, raceIndex } = useAppStore.getState()
@@ -322,7 +344,7 @@ export function CameraRig({ model, session }: { model: TrackModel; session: Sess
         targetGoal.current.copy(tmpA)
         targetGoal.current.x += Math.cos(sample.heading) * 14
         targetGoal.current.z += -Math.sin(sample.heading) * 14
-        spanGoal.current = 130
+        spanGoal.current = 95
       }
     } else if (cameraMode === 'anatomy') {
       // the cutaway: tight on the focused car (else the leader), framed from
@@ -360,12 +382,18 @@ export function CameraRig({ model, session }: { model: TrackModel; session: Sess
       span.current = spanGoal.current
       target.current.copy(targetGoal.current)
     } else {
+      // tracking a subject moving up to ~90 m/s: a fixed smoothing constant
+      // parks the frame a constant v/k meters BEHIND the car — the subject
+      // drifts to the frame edge and reads as out of focus. Scale the pan
+      // gain with the subject's own speed so the lag stays bounded.
+      const trackV = sample.valid ? sample.velocity : sampleB.valid ? sampleB.velocity : 0
+      const kTrack = 1 - Math.exp(-(4.5 + Math.min(trackV, 95) / 11) * Math.min(dt, 0.08))
       // shortest-arc azimuth damping
       let dAz = azGoal.current - az.current
       dAz = Math.atan2(Math.sin(dAz), Math.cos(dAz))
       az.current += dAz * kAz
       span.current += (spanGoal.current - span.current) * kSpan
-      target.current.lerp(targetGoal.current, kPan)
+      target.current.lerp(targetGoal.current, Math.max(kPan, kTrack))
     }
 
     // never let a bad sample poison the rig: NaN here wedges the GPU

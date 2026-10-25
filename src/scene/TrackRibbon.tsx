@@ -247,6 +247,7 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
           uniform vec3 uCheckWhite;
           uniform float uLength;
           uniform float uHalfWidth;
+          uniform float uWidthGain;
           varying float vSide;
           varying float vBrake;
           varying float vSector;
@@ -260,8 +261,12 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
             vec3 col = vec3(1.0);
             float et = clamp(abs(vSide), 0.0, 1.0);
 
-            // graphite asphalt; darkens and cools when wet
+            // graphite asphalt; darkens and cools when wet. As the road
+            // swells to model-kit width for a wide shot, it also deepens
+            // toward ink — at map distance the circuit must read as a
+            // drawn line on porcelain, not fade into the paper
             vec3 base = mix(uBaseDry, uBaseWet, uWet);
+            base = mix(base, uInk * 1.9, clamp((uWidthGain - 1.5) / 1.5, 0.0, 1.0) * 0.55);
 
             // grain: fine speckle + larger mottling, stable along the surface
             float gn1 = hash21(vec2(floor(vArc / 0.9), floor(et * 22.0)));
@@ -330,11 +335,11 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
     // zoom-aware model-kit width — the single writer of widthGain.
     // A real track at gallery distance collapses under a pixel; model
     // kits fix this by lying about scale, so the road keeps at least
-    // ~17 px of read at any framing, capped at 3× so corners never
+    // ~22 px of read at any framing, capped at 3.4× so corners never
     // merge into a single blob
     const zoom = Math.max(state.camera.zoom, 1e-6)
     const roadPx = 2 * model.halfWidth * zoom
-    const target = THREE.MathUtils.clamp(17 / Math.max(roadPx, 0.01), 1, 3)
+    const target = THREE.MathUtils.clamp(22 / Math.max(roadPx, 0.01), 1, 3.4)
     const g = sceneRefs.widthGain
     g.value += (target - g.value) * Math.min(1, dt * 5)
   })

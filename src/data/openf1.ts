@@ -123,6 +123,15 @@ async function requestLane<T>(
         attempt++
         retryDelay = backoff
       } else {
+        // OpenF1 locks ALL free access (including the historical archive)
+        // while an F1 session is running live, until it ends. Say so plainly
+        // — a bare 401 reads as "broken app" when it's a data-source policy.
+        if (res.status === 401) {
+          throw new Error(
+            'OpenF1 archive locked (401): free access is restricted while an F1 session is running live. ' +
+              'Retry after the session ends, or enter the demonstration theatre (works offline).',
+          )
+        }
         throw new Error(`OpenF1 ${res.status}: ${url}`)
       }
     } catch (err) {

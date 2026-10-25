@@ -4,6 +4,8 @@
    ============================================================ */
 
 import { useEffect, useState } from 'react'
+import { useAppStore } from '../state/appStore'
+import { DEMO } from './SessionBrowser'
 
 const KEY = 'apexos-briefed-v2'
 
@@ -29,6 +31,8 @@ export function Onboarding() {
 
   if (!show) return null
 
+  const simulated = useAppStore.getState().session?.meta.session_key === DEMO.sessionKey
+
   const dismiss = () => {
     setShow(false)
     try {
@@ -44,8 +48,18 @@ export function Onboarding() {
         <p className="label" style={{ color: 'var(--accent)' }}>ORIENTATION</p>
         <h2 className="brief__title">You&apos;re on the pit wall now.</h2>
         <p className="brief__lede">
-          Everything on screen is real telemetry — half a million data points, replayed. The
-          interface interprets the race and directs your attention; you choose how deep to go.
+          {simulated ? (
+            <>
+              This is the demonstration theatre — a simulated Grand Prix, generated on real circuit
+              geometry, so the machine works even when the archive cannot. Every panel interprets the
+              same simulated feed; you choose how deep to go.
+            </>
+          ) : (
+            <>
+              Everything on screen is real telemetry — half a million data points, replayed. The
+              interface interprets the race and directs your attention; you choose how deep to go.
+            </>
+          )}
         </p>
         <ul className="brief__rows">
           {ROWS.map((r) => (

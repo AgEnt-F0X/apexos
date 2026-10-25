@@ -16,6 +16,7 @@ F1 spatial race intelligence engine. React 19 + three.js/r3f + zustand + custom 
 - `npm run preview` — preview production build
 - `npx tsx scripts/snapshot-session.ts [sessionKey]` — rebuild a hero pack (default 9636); ~1–2 min cold fetch
 - `npx tsx scripts/verify-pack.ts [sessionKey]` — decode a pack and print verifiable facts for truth-checking against the historical record
+- `npx tsx scripts/make-demo-pack.ts` — regenerate `public/packs/9595.apx`, the synthetic demonstration Grand Prix (Interlagos, 55 laps, SC + rain arc). Bundled and committed: it is the always-open door when OpenF1 is locked or offline. `src/ui/SessionBrowser.tsx` exports it as `DEMO`; StatusBar shows the SIMULATION badge for it; keep every copy of session 9595 labelled as simulated.
 
 There is no test suite. Verification means `npm run typecheck` plus `verify-pack.ts` for touched data paths.
 
@@ -30,8 +31,10 @@ There is no test suite. Verification means `npm run typecheck` plus `verify-pack
 
 ## Pitfalls
 
-- `public/packs/*.apx` is gitignored; a fresh clone has no hero pack and hits the slow worker path. Run `snapshot-session.ts` first or first-visit loads take 1–2 min.
+- `public/packs/*.apx` is gitignored EXCEPT `9595.apx` (the demo pack ships with the repo). Hero packs for real sessions are regenerated with `snapshot-session.ts`.
+- **OpenF1 live-session lockdown (2026):** during a running F1 session the whole API — including the historical archive — answers 401 to keyless clients until the session ends. The app handles this: `SessionBrowser` explains the lock and features the demo session; `openf1.ts` maps 401 to a plain-language error. Don't "fix" a 401 in code — retry after the session or use the demo pack.
 - TypeScript strictness will fail PRs for unused locals/params — strip them.
-- Vite dev port is 5199; if something else holds it, the server won't auto-increment (no `--port` override in config).
+- Vite dev port is 5199; if something else holds it, the server silently moves to another port (5199 must be free — kill stale node processes before restarting on Windows).
 - `tsconfig.json` includes only `src/`; scripts under `scripts/` are run by `tsx`, not type-checked by `npm run typecheck`.
 - OpenF1 windows can 404 under load; `loadSession` retries gaps, so a transient "unrecoverable windows" error usually needs a retry rather than a code change.
+- The theatre's frame loop freezes with the tab's compositor (RAF): a "frozen race clock" in an automated/headless browser is usually the environment, not the clock.

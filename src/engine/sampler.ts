@@ -89,8 +89,41 @@ export function sampleCar(ch: DriverChannels, t: number, out: CarSample): CarSam
   const dy = crDeriv(ch.y[i0], ch.y[i], ch.y[i2], ch.y[i3], u) * ch.hz
   const v = Math.hypot(dx, dy)
   out.velocity = v
-  // hold last heading when (nearly) stationary — parked cars shouldn't spin
-  if (v > 1.5) out.heading = Math.atan2(dy, dx)
+  // heading: the analytic derivative while rolling; when (nearly) stationary
+  // the derivative is noise — a car on the grid must point where its own
+  // telemetry is about to take it, never at whatever heading happened to sit
+  // in this output object last (callers reuse one CarSample across the whole
+  // field, so a leaked heading paints parked cars sideways)
+  if (v > 1.5) {
+    out.heading = Math.atan2(dy, dx)
+  } else {
+    // chord toward where this car is about to be, trying progressively
+    // longer horizons so a long stop (grid hold, pit box) still finds the
+    // launch direction instead of a standstill; cars parked at the END of
+    // their data (retired) fall back to where they came from
+    let found = false
+    for (const aheadS of [1.6, 3.5, 8, 16]) {
+      const k = Math.min(last, i + Math.round(ch.hz * aheadS))
+      const cx = ch.x[k] - ch.x[i]
+      const cy = ch.y[k] - ch.y[i]
+      if (Math.hypot(cx, cy) > 0.6) {
+        out.heading = Math.atan2(cy, cx)
+        found = true
+        break
+      }
+    }
+    if (!found) {
+      for (const backS of [2, 6, 15]) {
+        const k = Math.max(0, i - Math.round(ch.hz * backS))
+        const cx = ch.x[i] - ch.x[k]
+        const cy = ch.y[i] - ch.y[k]
+        if (Math.hypot(cx, cy) > 0.6) {
+          out.heading = Math.atan2(cy, cx)
+          break
+        }
+      }
+    }
+  }
 
   out.speed = ch.speed[i] + (ch.speed[i2] - ch.speed[i]) * u
   out.throttle = ch.throttle[i]

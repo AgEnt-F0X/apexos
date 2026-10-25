@@ -429,7 +429,10 @@ export function Cars({ session, model }: { session: SessionData; model: TrackMod
   // (this useFrame is at the end of the render loop — placed into a later section if needed)
 
   const dummy = useMemo(() => new THREE.Object3D(), [])
-  const sample = useMemo(() => makeCarSample(), [])
+  // one sample object PER CAR: sampleCar only rewrites heading while the car
+  // rolls, so a single shared object leaks car i-1's heading into parked
+  // car i — at the grid that points half the field sideways
+  const samples = useMemo(() => drivers.map(() => makeCarSample()), [drivers])
   const projV = useMemo(() => new THREE.Vector3(), [])
   const lastTireT = useRef(-1e9)
   const prevT = useRef(-1e9)
@@ -506,6 +509,7 @@ export function Cars({ session, model }: { session: SessionData; model: TrackMod
     for (let i = 0; i < count; i++) {
       const d = drivers[i]
       const ch = session.channels[d.driver_number]
+      const sample = samples[i]
       sampleCar(ch, t, sample)
       const tag = tags[i]
       if (!sample.valid) {

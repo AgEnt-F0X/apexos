@@ -16,10 +16,9 @@
   padding: clamp(24px, 5vh, 64px) clamp(24px, 5vw, 80px) 20px;
   overflow: hidden;
   position: relative;
-  background:
-    radial-gradient(1100px 640px at 85% -10%, rgba(31, 114, 216, 0.035), transparent 60%),
-    radial-gradient(900px 520px at -10% 110%, rgba(225, 6, 0, 0.025), transparent 60%),
-    var(--bg-0);
+  /* flat porcelain ground — the studio washes of v0 were decoration the
+     design law never allowed; tone steps separate surfaces, not light */
+  background: var(--bg-0);
 }
 
 .browser__intro {
@@ -31,6 +30,7 @@
 }
 
 .browser__brand {
+  margin: 0; /* h1 reset — the brand IS the screen's title */
   font-size: var(--fs-hero);
   font-weight: 700;
   letter-spacing: -0.03em;
@@ -107,7 +107,7 @@
 .browser__year {
   padding: 6px 14px;
   font-size: var(--fs-data);
-  color: var(--text-lo);
+  color: var(--text-mid);
   border: 1px solid transparent;
   border-radius: var(--r-1);
   transition: all var(--t-fast) var(--ease-out);
@@ -116,7 +116,7 @@
 .browser__year:hover { color: var(--text-hi); }
 
 .browser__year.is-active {
-  color: var(--accent);
+  color: var(--text-hi);
   border-color: var(--accent-line);
   background: var(--accent-dim);
 }
@@ -193,7 +193,7 @@
 
 .standings__src {
   color: var(--text-ghost);
-  font-size: 10px;
+  font-size: var(--fs-nano);
   letter-spacing: 0.06em;
 }
 
@@ -207,16 +207,26 @@
   border-collapse: collapse;
   font-size: var(--fs-data);
   min-width: 280px;
+  font-variant-numeric: tabular-nums;
 }
 
 .standings__table th {
   text-align: left;
   color: var(--text-lo);
   font-weight: 400;
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: var(--fs-nano);
+  letter-spacing: 0.05em;
   padding: 2px 12px 4px 0;
   border-bottom: 1px solid var(--line);
+}
+
+/* counts and wins are figures: right-aligned so the digits stack */
+.standings__table th:nth-child(3),
+.standings__table th:nth-child(4),
+.standings__table td:nth-child(3),
+.standings__table td:nth-child(4) {
+  text-align: right;
+  padding-right: 12px;
 }
 
 .standings__table td {
@@ -1126,6 +1136,17 @@
   background: var(--bg-2);
 }
 
+.status__sim {
+  padding: 4px 10px;
+  font-size: var(--fs-micro);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  color: var(--text-mid);
+  border: 1px solid var(--hairline);
+  border-radius: var(--r-1);
+  background: var(--bg-2);
+}
+
 .status__liveDot {
   width: 6px;
   height: 6px;
@@ -1194,12 +1215,22 @@
   padding: 10px 2px;
   text-align: left;
   color: var(--text-mid);
-  font-size: var(--fs-data);
-  letter-spacing: 0.06em;
+  font-size: var(--fs-body);
+  letter-spacing: 0.04em;
   transition: color var(--t-fast) var(--ease-out);
 }
 
 .browser__signature:hover { color: var(--accent); }
+
+.browser__signature--demo { padding-top: 2px; }
+
+.browser__loadingSub {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-lo);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.08em;
+}
 
 .browser__signatureSub {
   font-size: var(--fs-micro);
@@ -1774,4 +1805,26 @@
   font-size: 8px;
   font-weight: 700;
   letter-spacing: 0.06em;
+}
+
+/* ---------- narrow viewport safety net ----------
+   The theatre is a desk instrument and stays desktop; but the archive
+   browser must not bleed text against the screen edge on a tablet or a
+   half-width window. One column, real margins, vertical scroll. */
+@media (max-width: 1020px) {
+  .browser {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    overflow-y: auto;
+    padding: 24px 20px 20px;
+  }
+  .browser__intro {
+    max-width: 640px;
+  }
+  .browser__archive {
+    min-width: 0;
+  }
+  .browser__years {
+    flex-wrap: wrap;
+  }
 }

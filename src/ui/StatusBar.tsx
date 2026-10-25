@@ -1,7 +1,12 @@
 import { useAppStore, type CameraMode } from '../state/appStore'
 import type { FlagPhase } from '../engine/flags'
+import { DEMO } from './SessionBrowser'
 import { DensityDial } from './DensityDial'
 import { useUiPulse } from './useUiPulse'
+
+/** sessions the app itself synthesized (scripts/make-demo-pack.ts) — they
+    must always wear the badge; honesty is a design principle here */
+const DEMO_KEYS = new Set([DEMO.sessionKey])
 
 const CAMERA_MODES: Array<{ id: CameraMode; label: string; key: string }> = [
   { id: 'director', label: 'AUTO', key: '1' },
@@ -38,6 +43,11 @@ export function StatusBar() {
         <span className="status__session mono">
           {m.location.toUpperCase()} · {m.session_name.toUpperCase()} · {m.year}
         </span>
+        {DEMO_KEYS.has(m.session_key) && (
+          <span className="status__sim mono" title="this session is a simulation bundled with the app, not a recorded race">
+            SIMULATION
+          </span>
+        )}
         <span className="status__circuit label">{m.circuit_short_name.toUpperCase()}</span>
         {joinMode && (
           <span className="status__live mono">
