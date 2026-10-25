@@ -1,0 +1,12 @@
+node_modules
+dist
+*.local
+.DS_Store
+.vite
+*.log
+.hermes/
+gui-test-screenshots/
+
+# hero packs are large binary artifacts — regenerate with scripts/snapshot-session.ts
+# (comment the next line out if you want to commit a pre-warmed pack for deploy)
+public/packs/*.apx

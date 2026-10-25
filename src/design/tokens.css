@@ -1,0 +1,191 @@
+/* ============================================================
+   APEX//OS design tokens — PORCELAIN
+   A cool gallery-white world: the race as a museum diorama.
+   Hue discipline, inverted: the interface is porcelain and ink.
+   Color is reserved for MEANING — team colors, timing semantics
+   (purple/green/amber), flags — plus ONE voice: signal red.
+   Elevation is shadow, never glow. Bloom is dead; craft is
+   contact shadows and hairlines.
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* surfaces — cool porcelain */
+  --bg-0: #eef1f5;          /* page / void */
+  --bg-1: #f4f6f9;          /* soft raised */
+  --bg-2: #ffffff;          /* card */
+  --bg-3: #e3e8ee;          /* inset / wells */
+  --paper: #ffffff;         /* pure white contrast for badges/active chips */
+  --veil: rgba(255, 255, 255, 0.86);       /* panels floating over the diorama */
+  --veil-hard: rgba(255, 255, 255, 0.96);
+
+  /* strokes — ink hairlines */
+  --line: rgba(24, 32, 44, 0.08);
+  --line-mid: rgba(24, 32, 44, 0.15);
+  --line-hi: rgba(24, 32, 44, 0.28);
+
+  /* ink — text-lo carries small labels and secondary body copy,
+     so it must clear 4.5:1; ghost is decorative-only (step numbers,
+     unit "of" markers, source credits) and never carries meaning */
+  --text-hi: #161b23;
+  --text-mid: #4c5766;
+  --text-lo: #5f6b7a;
+  --text-ghost: #96a2b0;
+
+  /* signal accent — one red voice, used sparingly */
+  --accent: #e10600;
+  --accent-ink: #ffffff;
+  --accent-dim: rgba(225, 6, 0, 0.06);
+  --accent-line: rgba(225, 6, 0, 0.30);
+
+  /* F1 timing semantics, recalibrated for white (fans know these) */
+  --t-purple: #7a2fe0;   /* fastest overall */
+  --t-green: #0a9e5f;    /* personal best */
+  --t-yellow: #d78f00;   /* slower / caution */
+  --t-red: #e10600;      /* danger / red flag */
+  --t-amber: #e08600;    /* safety car */
+  --t-blue: #1f72d8;     /* blue flag / wet */
+
+  /* tire compounds, ink-calibrated */
+  --tire-soft: #e10600;
+  --tire-medium: #d7a300;
+  --tire-hard: #454e5a;
+  --tire-inter: #1e9e50;
+  --tire-wet: #1f72d8;
+
+  /* type */
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* type scale */
+  --fs-hero: clamp(44px, 7vw, 92px);
+  --fs-h1: 28px;
+  --fs-h2: 20px;
+  --fs-h3: 15px;
+  --fs-body: 13.5px;
+  --fs-data: 12.5px;
+  --fs-micro: 10.5px;
+  --fs-nano: 9.5px;
+
+  --track-wide: 0.14em;
+  --track-mid: 0.08em;
+
+  /* rhythm */
+  --r-1: 4px;
+  --r-2: 8px;
+  --r-3: 12px;
+  --gap-1: 6px;
+  --gap-2: 10px;
+  --gap-3: 16px;
+  --gap-4: 24px;
+  --gap-5: 40px;
+
+  /* motion */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-swift: cubic-bezier(0.55, 0, 0.1, 1);
+  --t-fast: 140ms;
+  --t-mid: 240ms;
+  --t-slow: 420ms;
+
+  /* semantic z ladder (never arbitrary) */
+  --z-xray: 30;
+  --z-brief: 40;
+  --z-toast: 50;
+  --z-about: 60;
+
+  /* elevation — layered soft shadows, gallery light from above */
+  --panel-shadow:
+    0 1px 2px rgba(22, 27, 35, 0.05),
+    0 10px 30px rgba(22, 27, 35, 0.08);
+  --panel-shadow-high:
+    0 2px 4px rgba(22, 27, 35, 0.05),
+    0 24px 64px rgba(22, 27, 35, 0.13);
+  /* legacy hover token — now a red-tinted lift, not a glow */
+  --glow-accent: 0 2px 6px rgba(225, 6, 0, 0.10), 0 10px 28px rgba(22, 27, 35, 0.10);
+}
+
+/* ---------- base ---------- */
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background: var(--bg-0);
+  color: var(--text-hi);
+  font-family: var(--font-display);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+#root { height: 100%; }
+
+::selection { background: rgba(225, 6, 0, 0.12); color: var(--text-hi); }
+
+/* scrollbars — thin, quiet */
+* { scrollbar-width: thin; scrollbar-color: var(--line-mid) transparent; }
+*::-webkit-scrollbar { width: 6px; height: 6px; }
+*::-webkit-scrollbar-thumb { background: var(--line-mid); border-radius: 3px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+button {
+  font-family: inherit;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ---------- shared utility classes ---------- */
+
+.mono { font-family: var(--font-mono); }
+
+.label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-wide);
+  text-transform: uppercase;
+  color: var(--text-lo);
+}
+
+.label--hi { color: var(--text-mid); }
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* paper card primitive */
+.panel {
+  background: var(--veil);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  backdrop-filter: blur(12px) saturate(1.1);
+  -webkit-backdrop-filter: blur(12px) saturate(1.1);
+  box-shadow: var(--panel-shadow);
+}
+
+/* legacy tactical corner-ticks — retired in PORCELAIN.
+   kept as a no-op so existing markup stays valid. */
+.ticked { position: relative; }
