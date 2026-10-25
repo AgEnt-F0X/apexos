@@ -96,6 +96,24 @@ export function narrate(m: Moment, session: SessionData): Narration {
       }
     case 'rain_stop':
       return { title: 'Rain easing', sub: 'A drying line will appear — slicks become a gamble worth taking.' }
+    case 'points_swing': {
+      const lead = /POINTS LEAD/.test(m.label)
+      return lead
+        ? {
+            title: `${A} leads the championship projection`,
+            sub: 'Live points, as they stand if the race ended now. This is what the wall is watching.',
+          }
+        : {
+            title: `Points swing — ${A}`,
+            sub: 'Live projection moved. Positions are the only currency that pays at the flag.',
+          }
+    }
+    case 'radio':
+      return {
+        title: `Radio — ${A}`,
+        sub: m.note ? 'Transmission on the team channel.' : 'Transmission on the team channel — press to listen.',
+        hedge: m.note ?? undefined,
+      }
     case 'chequered':
       return { title: 'Chequered flag', sub: null }
     default:

@@ -10,6 +10,7 @@ import { raceClock } from '../engine/RaceClock'
 import { RaceStateIndex } from '../engine/raceState'
 import { buildFlagTimeline, type FlagTimeline } from '../engine/flags'
 import { buildMoments, type MomentsModel } from '../engine/moments'
+import { buildSectorTimeline, type SectorTimeline } from '../engine/sectorTimeline'
 import { sceneRefs } from '../scene/sceneRefs'
 
 export type Screen = 'browser' | 'loading' | 'theatre'
@@ -31,6 +32,7 @@ interface AppState {
   raceIndex: RaceStateIndex | null
   flags: FlagTimeline | null
   moments: MomentsModel | null
+  sectors: SectorTimeline | null
   loadTarget: LoadTarget | null
   progress: LoadProgress | null
   error: string | null
@@ -65,6 +67,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   raceIndex: null,
   flags: null,
   moments: null,
+  sectors: null,
   loadTarget: null,
   progress: null,
   error: null,
@@ -89,6 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       raceIndex: null,
       flags: null,
       moments: null,
+      sectors: null,
     })
     replaySource
       .load(target.sessionKey, (progress) => {
@@ -101,6 +105,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         const raceIndex = new RaceStateIndex(session)
         const flags = buildFlagTimeline(session)
         const moments = buildMoments(session, raceIndex, flags)
+        const sectors = buildSectorTimeline(session)
         const join = target.join === true
         if (join) {
           // join two minutes before the action, locked to broadcast pace
@@ -114,6 +119,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           raceIndex,
           flags,
           moments,
+          sectors,
           screen: 'theatre',
           focusDriver: null,
           cameraMode: 'director',
@@ -139,6 +145,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       raceIndex: null,
       flags: null,
       moments: null,
+      sectors: null,
       loadTarget: null,
       progress: null,
       focusDriver: null,

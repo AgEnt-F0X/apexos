@@ -12,6 +12,7 @@ import type { FlagTimeline } from './flags'
 import { RaceStateIndex } from './raceState'
 import { buildUndercuts } from './metrics/undercut'
 import { buildGapDynamics } from './metrics/gapDynamics'
+import { buildPointsSwings } from './points'
 
 export type MomentType =
   | 'overtake'
@@ -28,6 +29,8 @@ export type MomentType =
   | 'rain_stop'
   | 'race_start'
   | 'chequered'
+  | 'points_swing'
+  | 'radio'
 
 export interface Moment {
   t: number
@@ -97,9 +100,11 @@ export function buildMoments(data: SessionData, idx: RaceStateIndex, flags: Flag
       lastPos.set(d, p)
       if (prev === undefined || p >= prev) continue
       if (P.t[i] < data.tAction + 20) continue // grid shuffle noise
-      // who did they take? the car now directly behind
+      // who did they take? the car now directly behind — a flapping swap
+      // can put the passer himself there; never narrate a self-pass
       const order = idx.orderAt(P.t[i] + 1)
-      const victim = order[p] // 0-based: position p is index p-1; victim at index p
+      const victimRaw = order[p]
+      const victim = victimRaw !== undefined && victimRaw !== d ? victimRaw : undefined
       const severity = Math.max(0.35, 1 - (p - 1) * 0.06)
       const off = officialAt(d, P.t[i])
       if (off) matchedOfficial.add(off)
@@ -188,6 +193,46 @@ export function buildMoments(data: SessionData, idx: RaceStateIndex, flags: Flag
         })
       }
     }
+  }
+
+  // --- championship swings: the projected points picture moving ---
+  if (isRace) {
+    const namePts = (d: number) => `${nameOf(d)}`
+    for (const s of buildPointsSwings(data, idx)) {
+      if (s.leadChange) {
+        const label = `POINTS LEAD — ${namePts(s.leader)} TAKES P1 (${s.delta >= 0 ? '+' : ''}${s.delta} PTS)`
+        moments.push({
+          t: s.t,
+          type: 'points_swing',
+          drivers: [s.leader],
+          label,
+          severity: 0.7,
+        })
+      } else if (Math.abs(s.delta) >= 4) {
+        moments.push({
+          t: s.t,
+          type: 'points_swing',
+          drivers: [s.driver],
+          label: `PTS SWING — ${namePts(s.driver)} ${s.delta >= 0 ? '+' : ''}${s.delta} PTS`,
+          severity: Math.min(0.55, 0.3 + Math.abs(s.delta) * 0.02),
+        })
+      }
+    }
+  }
+
+  // --- team radio beats: transmissions clustered around the story.
+  //     Real packs carry audio URLs (the transport bar plays them);
+  //     the demonstration pack's rows are silent — the chip pulses only ---
+  for (const r of data.radio) {
+    if (!Number.isFinite(r.t)) continue
+    moments.push({
+      t: r.t,
+      type: 'radio',
+      drivers: [r.driverNumber],
+      label: `RADIO — ${nameOf(r.driverNumber)}`,
+      severity: 0.3,
+      note: r.url ? undefined : 'no audio attached to this transmission',
+    })
   }
 
   // --- battles: sustained interval < threshold ---

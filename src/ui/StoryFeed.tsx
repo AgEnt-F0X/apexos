@@ -10,6 +10,7 @@ import type { Moment, MomentType } from '../engine/moments'
 import { narrate } from '../engine/narrate'
 import { useAppStore } from '../state/appStore'
 import { useUiPulse } from './useUiPulse'
+import { playRadio } from './radioPlayer'
 
 const ICON: Record<MomentType, string> = {
   overtake: '⇅',
@@ -26,6 +27,8 @@ const ICON: Record<MomentType, string> = {
   rain_stop: '☼',
   race_start: '▶',
   chequered: '⏁',
+  points_swing: '⊕',
+  radio: '≋',
 }
 
 const TONE: Partial<Record<MomentType, string>> = {
@@ -38,6 +41,8 @@ const TONE: Partial<Record<MomentType, string>> = {
   overtake: 'is-green',
   undercut: 'is-green',
   battle_swing: 'is-amber',
+  points_swing: 'is-purple',
+  radio: 'is-blue',
 }
 
 function lapOfMoment(m: Moment): string {
@@ -93,11 +98,21 @@ export function StoryFeed() {
           // duplicated/omitted rows, so the feed dropped beats at random
           const key = `${m.type}-${m.t.toFixed(1)}-${mi}`
           const isNew = pulse.t - m.t < 6
+          const onClick = () => {
+            if (m.type === 'radio') {
+              // seek, then play the actual transmission where one exists
+              const clip = session.radio.find(
+                (r) => r.driverNumber === m.drivers[0] && Math.abs(r.t - m.t) < 0.5 && r.url,
+              )
+              if (clip) playRadio(clip.url, clip.driverNumber, clip.t)
+            }
+            seek(m)
+          }
           if (density >= 2) {
             // engineer: machine log
             const lapNo = raceIndex && m.drivers[0] !== undefined ? raceIndex.lapOf(m.drivers[0], m.t) : null
             return (
-              <button className={`feed__row mono ${isNew ? 'is-new' : ''}`} key={key} onClick={() => seek(m)}>
+              <button className={`feed__row mono ${isNew ? 'is-new' : ''}`} key={key} onClick={onClick}>
                 <span className={`feed__icon ${TONE[m.type] ?? ''}`}>{ICON[m.type]}</span>
                 <span className="feed__label">{m.label}</span>
                 <span className="feed__t">{lapNo ? `L${lapNo}` : lapOfMoment(m)}</span>
@@ -106,7 +121,7 @@ export function StoryFeed() {
           }
           const n = narrate(m, session)
           return (
-            <button className={`feed__card ${isNew ? 'is-new' : ''}`} key={key} onClick={() => seek(m)}>
+            <button className={`feed__card ${isNew ? 'is-new' : ''}`} key={key} onClick={onClick}>
               <span className={`feed__icon ${TONE[m.type] ?? ''}`}>{ICON[m.type]}</span>
               <span className="feed__body">
                 <span className="feed__title">{n.title}</span>

@@ -27,6 +27,8 @@ There is no test suite. Verification means `npm run typecheck` plus `verify-pack
 - `SessionSource` seam in `src/data/source.ts` hides whether bytes come from a cached `.apx`, IndexedDB, or the worker.
 - Assets resolve through `import.meta.env.BASE_URL` (packs at `packs/<key>.apx`); don't hardcode `/`.
 - GLSL/Three code in `src/scene/`. Web worker entry is `src/data/sessionWorker.ts` (imported via `new URL('./sessionWorker.ts', import.meta.url)`).
+- Interpretation layer modules each build once per session in `appStore.loadSession`: `moments.ts` (story), `sectorTimeline.ts` (purple/green sector semantics — purple is decided at the moment a time is SET, not by the final best), `points.ts` (live championship projection + swing feed, lead-change rows carry a 30 s cooldown).
+- `scene/drsZones.ts` derives DRS zone extents from the field's own drs-channel activations via a spatial hash onto track stations — no zone table exists in any pack; works on real and demo data alike.
 - Commit history: repo currently has no commits (`master`); pre-existing staged/modified/untracked changes at session start — do not amend or reset without asking.
 
 ## Pitfalls

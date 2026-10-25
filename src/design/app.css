@@ -741,6 +741,48 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ENGINEER density: the tower widens to carry the pit wall's sector
+   times (purple = session best at the moment it was set, green =
+   personal best) and the live championship projection */
+.tower--engineer { width: 420px; }
+
+.tower--engineer .tower__head {
+  grid-template-columns: 30px 1fr auto 70px;
+}
+
+.tower__headSectors {
+  text-align: right;
+  margin-right: 16px;
+  letter-spacing: 0.08em;
+}
+
+.tower--engineer .tower__acr { width: 48px; flex: none; }
+
+.tower__sectors {
+  display: flex;
+  gap: 5px;
+  margin-left: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tower__sector {
+  font-style: normal;
+  width: 34px;
+  text-align: right;
+  font-size: var(--fs-nano);
+  color: var(--text-lo);
+}
+
+.tower__sector.is-purple { color: var(--t-purple); font-weight: 700; }
+.tower__sector.is-green { color: var(--t-green); }
+
+.tower__pts {
+  width: 22px;
+  text-align: right;
+  font-size: var(--fs-nano);
+  color: var(--text-mid);
+}
+
 /* --- DNA strip --- */
 
 .dna {

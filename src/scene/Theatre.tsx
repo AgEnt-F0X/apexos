@@ -280,7 +280,7 @@ export function Theatre() {
         lapCount={raceIndex?.totalLaps ?? 0}
         plaque={`${session.meta.circuit_short_name.toUpperCase().replace(/_/g, ' ')}  ·  ${(model.length / 1000).toFixed(3)} KM  ·  ${model.corners.length} TURNS`}
       />
-      <TrackRibbon model={model} />
+      <TrackRibbon model={model} session={session} />
       <TracksideDressing model={model} />
       <TrackFurniture model={model} />
       <Cars session={session} model={model} />

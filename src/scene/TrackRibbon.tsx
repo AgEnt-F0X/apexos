@@ -16,8 +16,11 @@
 import { useEffect, useMemo } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
+import type { SessionData } from '../data/types'
 import type { TrackModel } from './trackBuilder'
+import { buildDrsZones } from './drsZones'
 import { sceneRefs } from './sceneRefs'
+import { raceClock } from '../engine/RaceClock'
 
 /** sRGB-authored palette, converted to linear working space by THREE.Color.
     Values are pre-lifted: under the physically-based rig (diffuse/π) these
@@ -44,8 +47,8 @@ const fragNoise = /* glsl */ `
   }
 `
 
-export function TrackRibbon({ model }: { model: TrackModel }) {
-  const { geometry, material, uniforms } = useMemo(() => {
+export function TrackRibbon({ model, session }: { model: TrackModel; session: SessionData }) {
+  const { geometry, material, uniforms, drs } = useMemo(() => {
     const n = model.n
     const hw = model.halfWidth
     const positions = new Float32Array(n * 2 * 3)
@@ -131,6 +134,9 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
       }
     }
 
+    // DRS zones, read from where the field actually ran with the wing open
+    const drs = buildDrsZones(session, model)
+
     const indices = new Uint32Array(n * 6)
     for (let i = 0; i < n; i++) {
       const a = i * 2
@@ -156,6 +162,7 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
     geometry.setAttribute('aLine', new THREE.BufferAttribute(aLine, 1))
     geometry.setAttribute('aC', new THREE.BufferAttribute(aC, 3))
     geometry.setAttribute('aN', new THREE.BufferAttribute(aN, 2))
+    geometry.setAttribute('aDrs', new THREE.BufferAttribute(drs.mask, 1))
     geometry.setIndex(new THREE.BufferAttribute(indices, 1))
     geometry.computeBoundingSphere()
 
@@ -165,6 +172,8 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
       uWet: { value: 0 },
       uRed: { value: 0 },
       uHeatGain: { value: 1 },
+      uDrsActive: { value: 0 },
+      uDrsGreen: { value: new THREE.Color('#0a9e5f') },
       uBaseDry: { value: C.baseDry },
       uBaseWet: { value: C.baseWet },
       uEmber: { value: C.ember },
@@ -205,6 +214,7 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
             attribute float aLine;
             attribute vec3 aC;   // centerline anchor
             attribute vec2 aN;   // lateral normal
+            attribute float aDrs; // 1 inside a DRS zone (derived from telemetry)
             uniform float uHalfWidth;
             uniform float uWidthGain;
             varying float vSide;
@@ -212,7 +222,8 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
             varying float vSector;
             varying float vArc;
             varying float vKerb;
-            varying float vLine;`,
+            varying float vLine;
+            varying float vDrs;`,
         )
         .replace(
           '#include <begin_vertex>',
@@ -223,6 +234,7 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
             vArc = aArc;
             vKerb = aKerb;
             vLine = aLine;
+            vDrs = aDrs;
             // zoom-aware model-kit width: rebuild the lateral offset from
             // the centerline so the road can swell as the camera pulls out
             transformed.x = aC.x + aN.x * aSide * uHalfWidth * uWidthGain;
@@ -235,6 +247,8 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
           uniform float uWet;
           uniform float uRed;
           uniform float uHeatGain;
+          uniform float uDrsActive;
+          uniform vec3 uDrsGreen;
           uniform vec3 uBaseDry;
           uniform vec3 uBaseWet;
           uniform vec3 uEmber;
@@ -254,6 +268,7 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
           varying float vArc;
           varying float vKerb;
           varying float vLine;
+          varying float vDrs;
           ${fragNoise}`)
         .replace(
           '#include <map_fragment>',
@@ -298,6 +313,13 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
             col = mix(col, plainLine, edge * (1.0 - vKerb));
             col = mix(col, kerbCol, kerbBand);
 
+            // DRS zones: a green line laid along both edges where the field
+            // actually runs with the wing open — quiet ink-green while the
+            // zone waits, bright timing-green while wings are live
+            float drsEdge = smoothstep(0.90, 0.955, et) * vDrs;
+            vec3 drsCol = mix(vec3(0.18, 0.42, 0.28), uDrsGreen, uDrsActive);
+            col = mix(col, drsCol, drsEdge * (0.55 + 0.45 * uDrsActive));
+
             // start/finish: a checkered band across the full width
             float dSF = min(vArc, uLength - vArc);
             float sf = 1.0 - smoothstep(1.1, 2.3, dSF);
@@ -313,8 +335,8 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
     // keep patched programs distinct from any other standard material
     material.customProgramCacheKey = () => 'apex-ribbon'
 
-    return { geometry, material, uniforms }
-  }, [model])
+    return { geometry, material, uniforms, drs }
+  }, [model, session])
 
   useEffect(() => {
     sceneRefs.ribbonMat = { uniforms }
@@ -331,6 +353,11 @@ export function TrackRibbon({ model }: { model: TrackModel }) {
     uniforms.uTime.value = state.clock.elapsedTime
     material.roughness = THREE.MathUtils.lerp(0.88, 0.26, uniforms.uWet.value)
     material.metalness = THREE.MathUtils.lerp(0.02, 0.18, uniforms.uWet.value)
+
+    // DRS: the zone lines breathe with how much of the field has the wing
+    // open right now — derived live from the panel drsZones samples
+    const active = drs.activationAt(raceClock.t)
+    uniforms.uDrsActive.value += (active - uniforms.uDrsActive.value) * Math.min(1, dt * 6)
 
     // zoom-aware model-kit width — the single writer of widthGain.
     // A real track at gallery distance collapses under a pixel; model

@@ -23,7 +23,7 @@ import { encodePack } from '../src/data/pack'
 import type {
   DriverRow, IntervalTable, LapEvent, OvertakeEvent, PitEvent,
   PositionTable, RaceControlEvent, ResultEvent, SessionData,
-  SessionMetaRow, StintEvent, WeatherEvent, GridEvent,
+  SessionMetaRow, StintEvent, WeatherEvent, GridEvent, RadioEvent,
 } from '../src/data/types'
 
 // ---------------- track ----------------
@@ -48,18 +48,24 @@ const px = (i: number) => track.points[i * 3]
 const py = (i: number) => track.points[i * 3 + 1]
 const pz = (i) => track.points[i * 3 + 2]
 
-/** position + tangent at arc length s (meters, wraps at L) */
+/** position + tangent at arc length s (meters, wraps at L).
+    The cached geometry stores WORLD coords: points = (worldX, height, -telemetryY),
+    with elevationBase the minimum telemetry altitude. The pack's channels
+    speak TELEMETRY: (x east, y north, z up) — so invert exactly that map. */
 function frameAt(s: number, out: { x: number; y: number; z: number; tx: number; ty: number }): void {
   const f = (((s % L) + L) % L) / DS
   const i = Math.floor(f)
   const u = f - i
   const i2 = (i + 1) % N
-  out.x = px(i) + (px(i2) - px(i)) * u
-  out.y = py(i) + (py(i2) - py(i)) * u
-  out.z = pz(i) + (pz(i2) - pz(i)) * u
+  const x0 = px(i), x2 = px(i2)
+  const h0 = py(i), h2 = py(i2) // heights
+  const w0 = pz(i), w2 = pz(i2) // worldZ = -telemetryY
+  out.x = x0 + (x2 - x0) * u
+  out.y = -(w0 + (w2 - w0) * u) // telemetry y = -worldZ
+  out.z = h0 + (h2 - h0) * u + track.elevationBase // telemetry z = height + base
   const i0 = (i - 1 + N) % N
   let tx = px(i2) - px(i0)
-  let ty = py(i2) - py(i0)
+  let ty = -(pz(i2) - pz(i0)) // telemetry-plane tangent = (dX, -dZ)
   const len = Math.hypot(tx, ty) || 1
   out.tx = tx / len
   out.ty = ty / len
@@ -130,7 +136,7 @@ const drsZones: Array<[number, number]> = []
       start = -1
     }
   }
-  // merge wrap-around (zone crossing the line)
+  // merge wrap-around (a straight crossing the start line appears as two runs)
   if (drsZones.length >= 2) {
     const first = drsZones[0]
     const last = drsZones[drsZones.length - 1]
@@ -138,6 +144,14 @@ const drsZones: Array<[number, number]> = []
       last[1] = L + first[1]
       drsZones.shift()
     }
+  }
+  // keep only the TWO longest flat runs — a circuit has at most a couple
+  // of genuine DRS straights; the planner's other flat spots (kinks taken
+  // flat, short links) are not zones
+  if (drsZones.length > 2) {
+    drsZones.sort((a, b) => b[1] - b[0] - (a[1] - a[0]))
+    drsZones.length = 2
+    drsZones.sort((a, b) => a[0] - b[0])
   }
 }
 function inDrsZone(s: number): boolean {
@@ -229,6 +243,7 @@ interface Car {
   // lap timing
   lapStartT: number
   sectorT: number[] // crossing times of current lap's sectors
+  prevSInLap: number // wrap-aware sector-crossing detection
   laps: Array<{ lap: number; t: number; dur: number; s1: number | null; s2: number | null; s3: number | null; pitOut: boolean }>
   pitLapsDone: Set<number>
   lastDrsLap: number
@@ -242,7 +257,7 @@ const cars: Car[] = FIELD.map((spec) => ({
   inPit: false, pitTransitUntil: 0, pitStopDur: 0, pitUntil: 0, exitingPit: false, pitStopT: 0,
   retired: false, retireAt: Infinity, finished: false, finishT: Infinity,
   xs: [], ys: [], zs: [], spd: [], thr: [], brk: [], gear: [], rpm: [], drs: [],
-  lapStartT: 0, sectorT: [0, 0], laps: [], pitLapsDone: new Set(), lastDrsLap: 0,
+  lapStartT: 0, sectorT: [0, 0], prevSInLap: 0, laps: [], pitLapsDone: new Set(), lastDrsLap: 0,
 }))
 
 // grid placement: staggered slots behind the line
@@ -251,6 +266,9 @@ FIELD.forEach((spec, i) => {
   const row = spec.grid - 1
   car.s = L - 14 - row * 8.1
   car.lat = row % 2 === 0 ? -2.3 : 2.3
+  // the grid sits PAST the sector lines — sector detection compares
+  // against where the car actually is, never against zero
+  car.prevSInLap = ((car.s - 14) % L + L) % L
 })
 
 // ---------------- event tables (built during the sim) ----------------
@@ -523,12 +541,16 @@ while (!raceOver && t < 5400) {
     const lapNow = Math.floor((car.s - 14) / L) // line at s=14 (grid cars start behind it)
     if (lapNow > car.lap) {
       const dur = t - car.lapStartT
+      // a lap spent in the pit lane has no honest sector geometry (the
+      // box row cuts the corners) — its splits are written null, the way
+      // a timing screen shows a pit lap without purple pretensions
+      const pitLap = car.pitLapsDone.has(lapNow)
       car.laps.push({
         lap: lapNow, t: car.lapStartT, dur,
-        s1: car.sectorT[0] ? car.sectorT[0] - car.lapStartT : null,
-        s2: car.sectorT[1] ? car.sectorT[1] - car.sectorT[0] : null,
-        s3: car.sectorT[1] ? dur - (car.sectorT[1] - car.lapStartT) : null,
-        pitOut: car.pitLapsDone.has(lapNow),
+        s1: !pitLap && car.sectorT[0] ? car.sectorT[0] - car.lapStartT : null,
+        s2: !pitLap && car.sectorT[1] ? car.sectorT[1] - car.sectorT[0] : null,
+        s3: !pitLap && car.sectorT[1] ? dur - (car.sectorT[1] - car.lapStartT) : null,
+        pitOut: pitLap,
       })
       car.lap = lapNow
       car.lapStartT = t
@@ -540,10 +562,19 @@ while (!raceOver && t < 5400) {
         car.s = 14 + TOTAL_LAPS * L // snap to the flag: classified cars hold one rank order
       }
     }
-    // sector crossings
-    const sInLap = ((car.s - 14) % L + L) % L
-    if (sInLap >= L * track.sectorParam[1] && car.sectorT[0] === 0) car.sectorT[0] = t
-    if (sInLap >= L * track.sectorParam[2] && car.sectorT[1] === 0) car.sectorT[1] = t
+    // sector crossings — wrap-aware forward progress through the line: a
+    // crossing counts only when sInLap advances PAST the threshold within
+    // the lap (the grid sits past both lines; simply being beyond them
+    // while rolling would "cross" both in one tick — 0.00 s splits)
+    if (!car.inPit && !car.exitingPit && car.v > 4) {
+      const sInLap = ((car.s - 14) % L + L) % L
+      const s1Line = L * track.sectorParam[1]
+      const s2Line = L * track.sectorParam[2]
+      const forward = sInLap >= car.prevSInLap // no line wrap this tick
+      if (forward && car.prevSInLap < s1Line && sInLap >= s1Line && car.sectorT[0] === 0) car.sectorT[0] = t
+      if (forward && car.prevSInLap < s2Line && sInLap >= s2Line && car.sectorT[1] === 0) car.sectorT[1] = t
+      car.prevSInLap = sInLap
+    }
 
     // ---- DRS passes (the visible overtake mechanic) ----
     if (ahead && !car.inPit && !ahead.inPit && drsEnabled && inDrsZone(car.s) && t > GRID_HOLD_S + 30) {
@@ -718,10 +749,33 @@ const intervals: IntervalTable = {
   gapLaps: Uint8Array.from(ivRows, (r) => r.gapLaps),
 }
 
+// team radio beats: transmissions clustered around the story — pit calls
+// just before each stop, race-start and chequered exchanges, plus a few
+// in the heat of battles. The demo has no audio; the URL stays empty and
+// the feed chips pulse silently (the SIMULATION badge carries the honesty).
+const radioRows: RadioEvent[] = []
+{
+  const push = (t: number, d: number) => radioRows.push({ t, driverNumber: d, url: '' })
+  push(GRID_HOLD_S - 1.5, 4) // polesitter, formation done
+  push(GRID_HOLD_S + 45, 1)  // the charge from the back begins
+  for (const p of pitRows) {
+    push(p.t - 7, p.driverNumber) // "box this lap"
+    push(p.t + 12, p.driverNumber) // out-lap check-in
+  }
+  // a few battle beats: every 5th overtake gets a word from the attacker
+  overtakeRows.forEach((o, i) => {
+    if (i % 5 === 2) push(o.t + 1.5, o.overtaking)
+  })
+  // the finish — winner and podium
+  const podium = finalOrder.slice(0, 3)
+  podium.forEach((c) => push(c.finishT - 2, c.spec.number))
+  radioRows.sort((a, b) => a.t - b.t)
+}
+
 const data: SessionData = {
   meta, epoch0: EPOCH0, drivers, channels,
   laps, stints: stintRows, pits: pitRows, raceControl: rcRows,
-  weather: weatherRows, radio: [], positions, intervals,
+  weather: weatherRows, radio: radioRows, positions, intervals,
   results, overtakes: overtakeRows.sort((a, b) => a.t - b.t), grid: gridEvents,
   tMin: 0, tMax: t,
   tAction: GRID_HOLD_S - 8,
@@ -734,5 +788,6 @@ writeFileSync(out, new Uint8Array(buffer))
 
 console.log(`demo pack written: ${out}`)
 console.log(`  session ${SESSION_KEY} · plan lap ${profileLapS.toFixed(1)}s · race ${t.toFixed(0)}s · ${TOTAL_LAPS} laps`)
+console.log(`  DRS zones (generator truth): ${drsZones.map(([a, b]) => `${((b - a) / L * 100).toFixed(0)}%`).join(' + ')} of the lap`)
 console.log(`  pack ${(buffer.byteLength / 1e6).toFixed(1)} MB · overtakes ${overtakeRows.length} · pits ${pitRows.length}`)
 console.log(`  leader: ${FIELD.find((f) => f.number === finalOrder[0].spec.number)?.acronym}`)
